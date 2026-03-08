@@ -7,22 +7,34 @@ import pyzmail
 import re
 import meshtastic.serial_interface
 from meshtastic.ble_interface import BLEInterface
+import smtplib
+from email.mime.text import MIMEText
+from pubsub import pub
 
 # Load settings
 load_dotenv()
 
 EMAIL = os.getenv("EMAIL")
 PASSWORD = os.getenv("PASSWORD")
+
 SERVER = os.getenv("IMAP_SERVER")
 PORT = int(os.getenv("IMAP_PORT", 143))
-USE_TLS = os.getenv("IMAP_TLS", "False").lower() == "true"
+
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+
 DEST = os.getenv("DEST_NODE")
 BLE_ADDRESS = os.getenv("BLE_ADDRESS")
+
+ALLOWED_NODE = os.getenv("ALLOWED_NODE")
 
 CHECK_INTERVAL = 30
 MAX_PACKET = 170
 
 UID_FILE = "seen_uids.txt"
+
+recent_messages = []
+MAX_RECENT = 50
 
 def generate_msg_id():
     return f"{random.randint(0, 0xFFFF):04X}"
@@ -72,23 +84,47 @@ def connect_mesh(mode):
 
 def connect_mail():
     """Connect to IMAP server."""
-    if USE_TLS:
-        mail = imaplib.IMAP4_SSL(SERVER, PORT)
+    if PORT == 993:
+        # SSL
+        mail = imaplib.IMAP4_SSL(SERVER, PORT, timeout=10)
     else:
-        mail = imaplib.IMAP4(SERVER, PORT)
+        # non-SSL port use STARTTLS
+        mail = imaplib.IMAP4(SERVER, PORT, timeout=10)
         mail.starttls()
+
 
     mail.login(EMAIL, PASSWORD)
     mail.select("INBOX")
     return mail
 
+def send_email(to_addr, subject, body):
+    msg = MIMEText(body)
+
+    msg["From"] = EMAIL
+    msg["To"] = to_addr
+    msg["Subject"] = subject
+
+    if SMTP_PORT == 465:
+        # SSL
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10)
+    else:
+        # non-SSL port use STARTTLS
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
+        server.ehlo()
+        server.starttls()
+
+    server.login(EMAIL, PASSWORD)
+    server.send_message(msg)
+    server.quit()
+
+    print("Email sent to", to_addr)
 
 def split_message(text, size):
     msg_id = generate_msg_id()
     total = (len(text) + size - 1) // size
 
     return [
-        f"MAIL {msg_id} {i+1}/{total}\n{text[i:i+size]}"
+        f"MAIL {msg_id} {i//size+1}/{total}\n{text[i:i+size]}"
         for i in range(0, len(text), size)
     ]
 
@@ -142,6 +178,77 @@ def check_mail(interface):
 
     mail.logout()
 
+def parse_mesh_email(text):
+    if not text.startswith("EML|"):
+        return None
+
+    parts = text.split("|", 3)
+
+    if len(parts) < 4:
+        return None
+
+    to_addr = parts[1].strip()
+    subject = parts[2].strip()
+    body = parts[3].strip()
+
+    return to_addr, subject, body
+
+def on_receive(packet, interface):
+    if "decoded" not in packet:
+        return
+
+    sender = packet.get("from")
+
+    if ALLOWED_NODE and sender != ALLOWED_NODE:
+        print("Ignoring message from", sender)
+        return
+
+    decoded = packet["decoded"]
+
+    if "text" not in decoded:
+        return
+
+    text = decoded["text"]
+
+    # duplicate protection
+    msg_key = sender + "|" + text
+
+    if msg_key in recent_messages:
+        print("Duplicate message ignored")
+        return
+
+    recent_messages.append(msg_key)
+
+    if len(recent_messages) > MAX_RECENT:
+        recent_messages.pop(0)
+
+    parsed = parse_mesh_email(text)
+
+    if not parsed:
+        return
+
+    to_addr, subject, body = parsed
+
+    print("Email request received from", sender)
+
+    try:
+
+        send_email(to_addr, subject, body)
+
+        interface.sendText(
+            "MAIL SENT",
+            destinationId=sender
+        )
+
+    except Exception as e:
+
+        print("Email send failed:", e)
+
+        interface.sendText(
+            "MAIL ERROR",
+            destinationId=sender
+        )
+
 
 def gateway_loop(interface, mode):
     """Main loop with reconnection."""
@@ -162,6 +269,9 @@ def gateway_loop(interface, mode):
 
             interface = connect_mesh(mode)
 
+            pub.unsubscribe(on_receive, "meshtastic.receive")
+            pub.subscribe(on_receive, "meshtastic.receive")
+
 
 if __name__ == "__main__":
     seen_messages = load_seen()
@@ -170,6 +280,8 @@ if __name__ == "__main__":
 
     interface, mode = choose_connection()
 
-    print("Mesh email gateway running...\n")
+    print("Mesh email gateway running...")
+
+    pub.subscribe(on_receive, "meshtastic.receive")
 
     gateway_loop(interface, mode)

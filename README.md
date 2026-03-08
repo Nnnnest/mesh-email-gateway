@@ -31,10 +31,22 @@ EMAIL=your_email@example.com
 PASSWORD=your_email_password
 IMAP_SERVER=imap.example.com
 IMAP_PORT=993
-IMAP_TLS=True
+SMTP_SERVER=your_email@example.com
+SMTP_PORT=587
 DEST_NODE=<Node ID of the receiving Meshtastic node>
 BLE_ADDRESS=<Optional BLE MAC address if using Bluetooth>
+ALLOWED_NODE=<Node ID of the MEshtastic node which is allowed to send emails to the base node>
 ```
 
 3. **Usage**
 You can either run the `mail_gateway.py` if you have python installed or just use the compiled file in `dist/mail_gateway`
+
+To send emails you have to use the Meshtastic app connected to the receiving node and send message to your client_base node in this fromat:
+`EML|recipient_email|subject|body`
+`EML` is a fixed prefix which tells that this message should be processed as an email request
+`recipient_email` is the email address you want to send to
+`subject` is the email subject line
+`body` is the email body text
+
+Here is example message:
+`EML|recipient_email@example.com|Test Subject|Hello from mesh, this is a test.`
