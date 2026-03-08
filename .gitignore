@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Editor / backup files
+*.un~
+*.swp
+*.swo
+.DS_Store
+
+# macOS
+.DS_Store
