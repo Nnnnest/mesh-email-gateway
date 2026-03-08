@@ -1,0 +1,3 @@
+meshtastic
+pyzmail36
+python-dotenv

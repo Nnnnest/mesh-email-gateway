@@ -35,3 +35,6 @@ IMAP_TLS=True
 DEST_NODE=<Node ID of the receiving Meshtastic node>
 BLE_ADDRESS=<Optional BLE MAC address if using Bluetooth>
 ```
+
+3. **Usage**
+You can either run the 'mail_gateway.py' if you have python installed or just use the compiled file in 'dist/mail_gateway'
