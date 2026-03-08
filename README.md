@@ -21,11 +21,12 @@ A Python gateway that forwards emails from a PC mailbox to a Meshtastic LoRa mes
 ```bash
 git clone https://github.com/YourUsername/mesh-email-gateway.git
 cd mesh-email-gateway
-
+```
 
 2. **Setup your credentials:**
-In the folder with the script you should have a .env file. The file structure is as follows:
+In the folder with the script you should have a `.env` file. The file structure is as follows:
 
+```
 EMAIL=your_email@example.com
 PASSWORD=your_email_password
 IMAP_SERVER=imap.example.com
@@ -33,3 +34,4 @@ IMAP_PORT=993
 IMAP_TLS=True
 DEST_NODE=<Node ID of the receiving Meshtastic node>
 BLE_ADDRESS=<Optional BLE MAC address if using Bluetooth>
+```
