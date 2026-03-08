@@ -19,7 +19,7 @@ A Python gateway that forwards emails from a PC mailbox to a Meshtastic LoRa mes
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/YourUsername/mesh-email-gateway.git
+git clone https://github.com/Nnnnest/mesh-email-gateway.git
 cd mesh-email-gateway
 ```
 
