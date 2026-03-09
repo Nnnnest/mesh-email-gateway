@@ -6,11 +6,9 @@ A Python gateway that forwards emails from a PC mailbox to a Meshtastic LoRa mes
 
 ## Features
 
-- Connects via USB or BLE (Bluetooth Low Energy)
+- Connects via USB or BLE
 - Fetches emails from any IMAP-compatible server
 - Sends emails in packets over mesh with unique message IDs
-- Automatically reconnects on failure
-- Avoids duplicate messages using persistent UID tracking
 
 ---
 

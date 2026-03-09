@@ -26,7 +26,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 DEST = os.getenv("DEST_NODE")
 BLE_ADDRESS = os.getenv("BLE_ADDRESS")
 
-ALLOWED_NODE = os.getenv("ALLOWED_NODE")
+ALLOWED_NODE = int(os.getenv("ALLOWED_NODE")[1:],16)
 
 CHECK_INTERVAL = 30
 MAX_PACKET = 170
@@ -98,6 +98,9 @@ def connect_mail():
     return mail
 
 def send_email(to_addr, subject, body):
+
+    print("sending email")
+
     msg = MIMEText(body)
 
     msg["From"] = EMAIL
@@ -199,8 +202,7 @@ def on_receive(packet, interface):
 
     sender = packet.get("from")
 
-    if ALLOWED_NODE and sender != ALLOWED_NODE:
-        print("Ignoring message from", sender)
+    if sender != ALLOWED_NODE:
         return
 
     decoded = packet["decoded"]
