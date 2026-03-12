@@ -163,12 +163,14 @@ Each packet contains a message identifier and sequence number so receiving devic
 
 # Bluetooth Setup
 
-If paring for the first time:
+If pairing for the first time:
 
 1. Pair your computer with the Meshtastic node using the **Meshtastic mobile app** or your system Bluetooth settings. This will make sure that device remembers your node. You only have to do this once.
 2. Disconnect the mobile app afterward
 
 Only one device can control the node at a time, so the script will fail to connect if another device is still connected.
+
+To check if computer sees your node you can use Meshtastic CLI command `meshtastic --ble-scan`, it will output name and bluetooth address of your node. In the settings you should put you node name, script will automatically match it with the address.
 
 ---
 
