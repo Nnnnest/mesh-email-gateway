@@ -19,7 +19,7 @@ from pubsub import pub
 
 iface = None
 settings = {}
-recent_packets = []
+recent_packets = set()
 
 
 # -------------------------
@@ -203,7 +203,6 @@ def send_email(to_addr,subject,body):
     if settings["SMTP_PORT"] == 465:
         server = smtplib.SMTP_SSL(settings["SMTP_SERVER"],settings["SMTP_PORT"],timeout=10)
     else:
-        print("SMTP STARTTLS")
         server = smtplib.SMTP(settings["SMTP_SERVER"],settings["SMTP_PORT"],timeout=10)
         server.ehlo()
         server.starttls()
@@ -338,9 +337,23 @@ def on_receive(packet):
 
         send_email(to_addr,subject,body)
 
+        confirm = f"EMAIL SENT: {to_addr}"
+
+        iface.sendText(
+                confirm,
+                destinationId=settings["DEST_NODE"]
+        )
+
     except Exception as e:
 
         print("Email send failed:",e)
+
+        fail = f"EMAIL FAILED"
+
+        iface.sendText(
+                fail,
+                destinationID=settings["DEST_NODE"]
+            )
 
 
 # -------------------------
