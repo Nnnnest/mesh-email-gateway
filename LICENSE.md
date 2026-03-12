@@ -1,19 +1,34 @@
-# Mesh Email Gateway License
+# Mesh Email Gateway License Agreement
 
-Copyright (c) Nestor Zudov
+Copyright (c) Nestor Zudov 
 
 All rights reserved.
 
-## Personal / Non-Commercial Use
+## 1. Grant of License
 
-You are free to use, modify, and distribute this software **for personal or non-commercial purposes** without restriction, provided you retain this notice.
+Subject to the terms of this agreement:
 
-## Commercial Use
+- You may **use, modify, and distribute** this software **for personal, educational, or non-commercial purposes**.
+- Any **commercial use**, including but not limited to sale, licensing, or integration into products/services for profit, **requires a separate commercial license** obtained from the copyright holder.
 
-Commercial use of this software, including distribution, sale, or integration into commercial products, **is strictly prohibited without obtaining a commercial license** from the copyright holder.
+## 2. Commercial License
 
-To request a commercial license, please contact: nestorzudov@gmail.com
+To obtain a commercial license, please contact the copyright holder at: nestorzudov@gmail.com
 
-## Disclaimer
+The commercial license may include fees or royalties, determined at the discretion of the copyright holder.
 
-This software is provided "as is", without warranty of any kind. The copyright holder is not liable for any damages or issues arising from its use.
+## 3. Restrictions
+
+You may **not**:
+
+- Remove or alter this copyright notice.
+- Distribute the software for commercial purposes without prior written authorization.
+- Claim ownership of the software.
+
+## 4. Disclaimer of Warranty
+
+This software is provided "as is" and without any warranty of any kind, either expressed or implied. The copyright holder shall not be liable for any damages arising from the use or inability to use this software.
+
+## 5. Limitation of Liability
+
+In no event shall the copyright holder be liable for any indirect, incidental, or consequential damages related to the use of this software, even if advised of the possibility of such damages.

@@ -2,153 +2,244 @@ import os
 import time
 import random
 import imaplib
+import smtplib
+import re
+import subprocess
 from dotenv import load_dotenv
 import pyzmail
-import re
 import meshtastic.serial_interface
 from meshtastic.ble_interface import BLEInterface
-import smtplib
 from email.mime.text import MIMEText
 from pubsub import pub
 
-# Load settings
-load_dotenv()
 
-EMAIL = os.getenv("EMAIL")
-PASSWORD = os.getenv("PASSWORD")
+# -------------------------
+# Global state
+# -------------------------
 
-SERVER = os.getenv("IMAP_SERVER")
-PORT = int(os.getenv("IMAP_PORT", 143))
+iface = None
+settings = {}
+recent_packets = []
 
-SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
-DEST = os.getenv("DEST_NODE")
-BLE_ADDRESS = os.getenv("BLE_ADDRESS")
+# -------------------------
+# Environment management
+# -------------------------
 
-ALLOWED_NODE = int(os.getenv("ALLOWED_NODE")[1:],16)
+def ensure_env():
 
-CHECK_INTERVAL = 30
-MAX_PACKET = 170
+    if os.path.exists(".env"):
+        return
 
-UID_FILE = "seen_uids.txt"
+    print("No .env file found. Initial setup.\n")
 
-recent_messages = []
-MAX_RECENT = 50
+    email = input("Email address: ")
+    password = input("Email password: ")
+    imap_server = input("IMAP server: ")
+    imap_port = input("IMAP port (usually 993): ")
+    smtp_server = input("SMTP server: ")
+    smtp_port = input("SMTP port (usually 587): ")
+    dest = input("Destination mesh node ID (!xxxx): ")
+    ble = input("Bluetooth node name (BLE_NAME): ")
+    allowed = input("Allowed sending node (!xxxx): ")
+
+    with open(".env","w") as f:
+        f.write(f"EMAIL={email}\n")
+        f.write(f"PASSWORD={password}\n")
+        f.write(f"IMAP_SERVER={imap_server}\n")
+        f.write(f"IMAP_PORT={imap_port}\n")
+        f.write(f"SMTP_SERVER={smtp_server}\n")
+        f.write(f"SMTP_PORT={smtp_port}\n")
+        f.write(f"DEST_NODE={dest}\n")
+        f.write(f"BLE_NAME={ble}\n")
+        f.write(f"ALLOWED_NODE={allowed}\n")
+
+    print(".env created\n")
+
+
+def load_settings():
+
+    load_dotenv(override=True)
+
+    return {
+        "EMAIL": os.getenv("EMAIL"),
+        "PASSWORD": os.getenv("PASSWORD"),
+        "IMAP_SERVER": os.getenv("IMAP_SERVER"),
+        "IMAP_PORT": int(os.getenv("IMAP_PORT",143)),
+        "SMTP_SERVER": os.getenv("SMTP_SERVER"),
+        "SMTP_PORT": int(os.getenv("SMTP_PORT",587)),
+        "DEST_NODE": os.getenv("DEST_NODE"),
+        "BLE_NAME": os.getenv("BLE_NAME"),
+        "ALLOWED_NODE": os.getenv("ALLOWED_NODE")
+    }
+
+def edit_settings():
+
+    print("\nModify settings (leave empty to keep current value):\n")
+
+    keys = [
+        "EMAIL","PASSWORD","IMAP_SERVER","IMAP_PORT",
+        "SMTP_SERVER","SMTP_PORT","DEST_NODE","BLE_NAME","ALLOWED_NODE"
+    ]
+
+    for key in keys:
+        if key in settings:
+            old = settings[key]
+        else:
+            old = ""
+
+        new = input(f"{key} [{old}]: ").strip()
+
+        settings[key] = new or old
+
+    settings["IMAP_PORT"] = int(settings["IMAP_PORT"])
+    settings["SMTP_PORT"] = int(settings["SMTP_PORT"])
+
+    with open(".env","w") as f:
+        for k,v in settings.items():
+            f.write(f"{k}={v}\n")
+
+    print("Settings updated.\n")
+
+
+# -------------------------
+# Utilities
+# -------------------------
 
 def generate_msg_id():
-    return f"{random.randint(0, 0xFFFF):04X}"
-
-def load_seen():
-    if not os.path.exists(UID_FILE):
-        return set()
-    with open(UID_FILE, "r") as f:
-        return set(line.strip() for line in f)
-
-def save_seen(uid):
-    with open(UID_FILE, "a") as f:
-        f.write(uid + "\n")
-
-def choose_connection():
-    print("\nSelect connection type:")
-    print("1) USB")
-    print("2) Bluetooth")
-
-    choice = input("Enter choice (1 or 2): ").strip()
-
-    if choice == "1":
-        print("Connecting via USB...")
-        return meshtastic.serial_interface.SerialInterface(), "usb"
-
-    elif choice == "2":
-        if not BLE_ADDRESS:
-            raise Exception("BLE_ADDRESS not set in .env")
-
-        print("Connecting via Bluetooth...")
-        return BLEInterface(address=BLE_ADDRESS), "ble"
-
-    else:
-        print("Invalid choice, defaulting to USB.")
-        return meshtastic.serial_interface.SerialInterface(), "usb"
+    return f"{random.randint(0,0xFFFF):04X}"
 
 
-def connect_mesh(mode):
-    if mode == "usb":
-        print("Reconnecting USB node...")
-        return meshtastic.serial_interface.SerialInterface()
+def split_message(text,size):
 
-    if mode == "ble":
-        print("Reconnecting Bluetooth node...")
-        return BLEInterface(address=BLE_ADDRESS)
-
-
-def connect_mail():
-    """Connect to IMAP server."""
-    if PORT == 993:
-        # SSL
-        mail = imaplib.IMAP4_SSL(SERVER, PORT, timeout=10)
-    else:
-        # non-SSL port use STARTTLS
-        mail = imaplib.IMAP4(SERVER, PORT, timeout=10)
-        mail.starttls()
-
-
-    mail.login(EMAIL, PASSWORD)
-    mail.select("INBOX")
-    return mail
-
-def send_email(to_addr, subject, body):
-
-    print("sending email")
-
-    msg = MIMEText(body)
-
-    msg["From"] = EMAIL
-    msg["To"] = to_addr
-    msg["Subject"] = subject
-
-    if SMTP_PORT == 465:
-        # SSL
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10)
-    else:
-        # non-SSL port use STARTTLS
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
-        server.ehlo()
-        server.starttls()
-
-    server.login(EMAIL, PASSWORD)
-    server.send_message(msg)
-    server.quit()
-
-    print("Email sent to", to_addr)
-
-def split_message(text, size):
     msg_id = generate_msg_id()
-    total = (len(text) + size - 1) // size
+    total = (len(text)+size-1)//size
 
     return [
         f"MAIL {msg_id} {i//size+1}/{total}\n{text[i:i+size]}"
-        for i in range(0, len(text), size)
+        for i in range(0,len(text),size)
     ]
 
-def check_mail(interface):
-    """Check inbox and forward messages to mesh."""
+
+# -------------------------
+# Mesh connection
+# -------------------------
+
+def find_ble_address():
+
+    print("Scanning for BLE nodes...")
+
+    try:
+        result = subprocess.run(
+            ["meshtastic","--ble-scan"],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+    except Exception as e:
+        print("BLE scan failed:", e)
+        return None
+
+    for line in result.stdout.splitlines():
+
+        match = re.search(r"name='([^']+)'.*address='([^']+)'", line)
+
+        if not match:
+            continue
+
+        name,address = match.groups()
+
+        if name == settings["BLE_NAME"]:
+            print("Found node:",name,address)
+            return address
+
+    print("Node not found")
+    return None
+
+
+def connect_mesh(mode):
+
+    if mode=="usb":
+        print("Connecting USB")
+        return meshtastic.serial_interface.SerialInterface()
+
+    if mode=="ble":
+
+        addr = find_ble_address()
+
+        if not addr:
+            return None
+
+        print("Connecting BLE")
+        return BLEInterface(address=addr)
+
+
+# -------------------------
+# Email functions
+# -------------------------
+
+def connect_mail():
+
+    if settings["IMAP_PORT"] == 993:
+        mail = imaplib.IMAP4_SSL(settings["IMAP_SERVER"],settings["IMAP_PORT"],timeout=10)
+    else:
+        mail = imaplib.IMAP4(settings["IMAP_SERVER"],settings["IMAP_PORT"],timeout=10)
+        mail.starttls()
+
+    mail.login(settings["EMAIL"],settings["PASSWORD"])
+    mail.select("INBOX")
+
+    return mail
+
+
+def send_email(to_addr,subject,body):
+
+    msg = MIMEText(body)
+
+    msg["From"] = settings["EMAIL"]
+    msg["To"] = to_addr
+    msg["Subject"] = subject
+
+    if settings["SMTP_PORT"] == 465:
+        server = smtplib.SMTP_SSL(settings["SMTP_SERVER"],settings["SMTP_PORT"],timeout=10)
+    else:
+        print("SMTP STARTTLS")
+        server = smtplib.SMTP(settings["SMTP_SERVER"],settings["SMTP_PORT"],timeout=10)
+        server.ehlo()
+        server.starttls()
+
+    server.login(settings["EMAIL"],settings["PASSWORD"])
+    server.send_message(msg)
+    server.quit()
+
+    print("Email sent to",to_addr)
+
+
+# -------------------------
+# Mail checking
+# -------------------------
+
+def check_mail(max_packet=170):
+
+    if not iface:
+        print("Mesh not connected")
+        return
+
     mail = connect_mail()
 
-    status, data = mail.search(None, "UNSEEN")
+    status,data = mail.search(None,"UNSEEN")
+
     if status != "OK":
         print("Search failed")
         mail.logout()
         return
 
     for uid_bytes in data[0].split():
+
         uid = uid_bytes.decode()
-        if uid in seen_messages:
-            continue
 
-        print("Reading mail...")
+        status,msg_data = mail.fetch(uid,"(RFC822)")
 
-        status, msg_data = mail.fetch(uid, "(RFC822)")
         if status != "OK":
             continue
 
@@ -156,54 +247,76 @@ def check_mail(interface):
 
         sender = msg.get_addresses("from")[0][1]
         subject = msg.get_subject()
-        body = ""
 
         if msg.text_part:
-            body = msg.text_part.get_payload().decode(msg.text_part.charset or "utf-8")
+            body = msg.text_part.get_payload().decode(msg.text_part.charset or "utf-8",errors="replace")
+
         elif msg.html_part:
-            html = msg.html_part.get_payload().decode(msg.html_part.charset or "utf-8")
+            html = msg.html_part.get_payload().decode(msg.html_part.charset or "utf-8",errors="replace")
             body = re.sub('<[^<]+?>','',html)
+
         else:
-            body = "(No readable message body)"
+            body = "(No readable body)"
 
         text = f"From:{sender}\nSub:{subject}\n{body}"
 
-        packets = split_message(text, MAX_PACKET)
+        packets = split_message(text,max_packet)
 
         for p in packets:
-            interface.sendText(p, destinationId=DEST)
+
+            print("Sending mesh packet")
+
+            iface.sendText(
+                p,
+                destinationId=settings["DEST_NODE"]
+            )
+
             time.sleep(3)
 
-        print("Message sent")
-
-        seen_messages.add(uid)
-        save_seen(uid)
+        mail.store(uid,'+FLAGS','\\Seen')
 
     mail.logout()
 
+
+# -------------------------
+# Mesh message handler
+# -------------------------
+
 def parse_mesh_email(text):
+
     if not text.startswith("EML|"):
         return None
 
-    parts = text.split("|", 3)
+    parts = text.split("|",3)
 
     if len(parts) < 4:
         return None
 
-    to_addr = parts[1].strip()
-    subject = parts[2].strip()
-    body = parts[3].strip()
+    return parts[1].strip(),parts[2].strip(),parts[3].strip()
 
-    return to_addr, subject, body
 
-def on_receive(packet, interface):
+def on_receive(packet):
+
     if "decoded" not in packet:
+        print("Message not decoded")
         return
 
-    sender = packet.get("from")
+    sender = str(packet.get("from"))
 
-    if sender != ALLOWED_NODE:
+    if sender != str(int(settings["ALLOWED_NODE"][1:],16)):
         return
+
+    packet_id = packet.get("id")
+
+    if packet_id in recent_packets:
+        print("Duplicate packet ignored")
+        return
+    
+    recent_packets.add(packet_id)
+
+    if len(recent_packets)>30:
+        recent_packets.clear()
+
 
     decoded = packet["decoded"]
 
@@ -212,78 +325,94 @@ def on_receive(packet, interface):
 
     text = decoded["text"]
 
-    # duplicate protection
-    msg_key = sender + "|" + text
-
-    if msg_key in recent_messages:
-        print("Duplicate message ignored")
-        return
-
-    recent_messages.append(msg_key)
-
-    if len(recent_messages) > MAX_RECENT:
-        recent_messages.pop(0)
-
     parsed = parse_mesh_email(text)
 
     if not parsed:
         return
 
-    to_addr, subject, body = parsed
+    to_addr,subject,body = parsed
 
-    print("Email request received from", sender)
+    print("Email request received")
 
     try:
 
-        send_email(to_addr, subject, body)
-
-        interface.sendText(
-            "MAIL SENT",
-            destinationId=sender
-        )
+        send_email(to_addr,subject,body)
 
     except Exception as e:
 
-        print("Email send failed:", e)
-
-        interface.sendText(
-            "MAIL ERROR",
-            destinationId=sender
-        )
+        print("Email send failed:",e)
 
 
-def gateway_loop(interface, mode):
-    """Main loop with reconnection."""
+# -------------------------
+# Main loop
+# -------------------------
+
+def gateway_loop(mode):
+
+    global iface
+
     while True:
+
         try:
-            check_mail(interface)
-            time.sleep(CHECK_INTERVAL)
+
+            check_mail()
 
         except Exception as e:
-            print("Connection error:", e)
-            print("Reconnecting in 5 seconds...")
-            time.sleep(5)
+
+            print("Gateway error:",e)
+            print("Reconnecting mesh...")
 
             try:
-                interface.close()
+                iface.close()
             except:
                 pass
+            
+            iface = connect_mesh(mode)
 
-            interface = connect_mesh(mode)
+            if not iface:
+                print("Reconnect failed")
 
-            pub.unsubscribe(on_receive, "meshtastic.receive")
-            pub.subscribe(on_receive, "meshtastic.receive")
+        time.sleep(30)
 
 
-if __name__ == "__main__":
-    seen_messages = load_seen()
+# -------------------------
+# Startup / Main
+# -------------------------
 
-    print("Mesh email gateway starting...")
+def main():
 
-    interface, mode = choose_connection()
+    global settings
+    global iface
 
-    print("Mesh email gateway running...")
+    ensure_env()
+    settings = load_settings()
+
+    print("Do you want to modify settings? (y/N)")
+    if input("> ").strip().lower() == "y":
+        edit_settings()
+        settings = load_settings()
+
+    print("Mesh Email Gateway Starting...\n")
+
+    # Connection selection
+    print("\nSelect connection type:")
+    print("1) USB")
+    print("2) Bluetooth")
+    choice = input("> ").strip()
+    mode = "usb" if choice == "1" else "ble"
+
+    # Initial mesh connection
+    iface = connect_mesh(mode)
+
+    if not iface:
+        print("Mesh connection failed")
+        return
 
     pub.subscribe(on_receive, "meshtastic.receive")
 
-    gateway_loop(interface, mode)
+    print("Gateway running")
+
+    gateway_loop(mode)
+
+if __name__ == "__main__":
+    main()

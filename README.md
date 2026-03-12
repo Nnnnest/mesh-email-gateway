@@ -1,54 +1,185 @@
 # Mesh Email Gateway
 
-A Python gateway that forwards emails from a PC mailbox to a Meshtastic LoRa mesh network via USB or Bluetooth.
+A Python gateway that forwards emails between a traditional email inbox and a **Meshtastic LoRa mesh network**.
+
+The gateway can:
+
+- Read incoming emails from an IMAP mailbox and transmit them over the mesh network
+- Receive mesh messages and send them as emails via SMTP
+
+It supports both **USB** and **Bluetooth (BLE)** connections to a Meshtastic node.
 
 ---
 
-## Features
+# Features
 
-- Connects via USB or BLE
-- Fetches emails from any IMAP-compatible server
-- Sends emails in packets over mesh with unique message IDs
+- Works with any **IMAP/SMTP email provider**
+- Connects to a Meshtastic node via **USB or Bluetooth**
+- Automatically splits long emails into **mesh-sized packets**
+- Sends mesh messages as **standard emails**
+- Simple configuration using a `.env` file
+- Prevents duplicate packet processing
 
 ---
 
-## Setup
+# Requirements
 
-1. **Clone the repository:**
+- Python
+- A Meshtastic node connected via **USB or Bluetooth**
+- An email account with **IMAP and SMTP enabled**
+
+---
+
+# Installation
+
+## 1. Clone the repository
 
 ```bash
 git clone https://github.com/Nnnnest/mesh-email-gateway.git
 cd mesh-email-gateway
 ```
 
-2. **Setup your credentials:**
-In the folder with the script you should have a `.env` file. The file structure is as follows:
+---
+
+## 2. Install Python dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+This installs the required libraries:
+
+- `meshtastic` – communication with the radio
+- `pyzmail36` – parsing incoming emails
+- `python-dotenv` – loading configuration
+- `pypubsub` – event system used by Meshtastic
+- `requests` – required dependency for Meshtastic
+- `bleak` – Bluetooth support
+
+---
+
+# Configuration
+
+The gateway uses a `.env` file for configuration.
+
+If the file does not exist, the script will **automatically create it and prompt you for the required settings** during the first run.
+
+Example configuration:
 
 ```
 EMAIL=your_email@example.com
 PASSWORD=your_email_password
+
 IMAP_SERVER=imap.example.com
 IMAP_PORT=993
-SMTP_SERVER=your_email@example.com
+
+SMTP_SERVER=smtp.example.com
 SMTP_PORT=587
-DEST_NODE=<Node ID of the receiving Meshtastic node>
-BLE_ADDRESS=<Optional BLE MAC address if using Bluetooth>
-ALLOWED_NODE=<Node ID of the MEshtastic node which is allowed to send emails to the base node>
+
+DEST_NODE=!abcd
+BLE_NAME=MyMeshtasticNode
+ALLOWED_NODE=!abcd
 ```
 
-3. **Usage**
-You can either run the `mail_gateway.py` if you have python installed or just use the compiled file in `dist/mail_gateway`
+### Configuration options
 
-To send emails you have to use the Meshtastic app connected to the receiving node and send message to your client_base node in this format:
-`EML|recipient_email|subject|body`
+| Variable | Description |
+|--------|--------|
+| EMAIL | Email address used by the gateway |
+| PASSWORD | Email account password or app password |
+| IMAP_SERVER | IMAP server address |
+| IMAP_PORT | Usually `993` |
+| SMTP_SERVER | SMTP server address |
+| SMTP_PORT | Usually `587` or `465` |
+| DEST_NODE | Meshtastic node ID that receives email messages |
+| BLE_NAME | Bluetooth name of the Meshtastic node |
+| ALLOWED_NODE | Only this node is allowed to send email requests |
 
-`EML` is a fixed prefix which tells that this message should be processed as an email request
+---
 
-`recipient_email` is the email address you want to send to
+# Running the Gateway
 
-`subject` is the email subject line
+Run the script:
 
-`body` is the email body text
+```bash
+python mail_gateway.py
+```
 
-Here is example message:
-`EML|recipient_email@example.com|Test Subject|Hello from mesh, this is a test.`
+At startup the program will ask which connection type to use:
+
+```
+1) USB
+2) Bluetooth
+```
+
+Select the connection method for your node.
+
+Once started the gateway will:
+
+1. Check the email inbox periodically
+2. Send new emails to the mesh network
+3. Listen for mesh messages requesting emails
+
+---
+
+# Sending Emails from the Mesh Network
+
+To send an email from the mesh network, send a message to the gateway node in the following format:
+
+```
+EML|recipient_email|subject|body
+```
+
+Example:
+
+```
+EML|recipient@example.com|Test Subject|Hello from the mesh network.
+```
+
+### Format explanation
+
+| Field | Meaning |
+|------|------|
+| EML | Required prefix indicating an email request |
+| recipient_email | Email address to send to |
+| subject | Email subject |
+| body | Email body text |
+
+Only messages from the configured **`ALLOWED_NODE`** will be processed.
+
+---
+
+# Receiving Emails on the Mesh
+
+When the gateway receives new emails in the configured inbox:
+
+1. The email is converted to plain text
+2. The message is split into multiple packets if necessary
+3. Packets are transmitted to the configured `DEST_NODE`
+
+Each packet contains a message identifier and sequence number so receiving devices can reconstruct the full message.
+
+---
+
+# Bluetooth Setup
+
+If paring for the first time:
+
+1. Pair your computer with the Meshtastic node using the **Meshtastic mobile app** or your system Bluetooth settings. This will make sure that device remembers your node. You only have to do this once.
+2. Disconnect the mobile app afterward
+
+Only one device can control the node at a time, so the script will fail to connect if another device is still connected.
+
+---
+
+# Compiled Version
+
+A compiled executable may be included in:
+
+```
+dist/mail_gateway
+```
+
+This allows running the gateway without installing Python.
+
+Python is still required if you want to modify or run the source code.

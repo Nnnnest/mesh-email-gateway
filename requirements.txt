@@ -2,3 +2,5 @@ meshtastic
 pyzmail36
 python-dotenv
 pypubsub
+requests
+bleak
