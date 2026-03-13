@@ -30,6 +30,24 @@ It supports both **USB** and **Bluetooth (BLE)** connections to a Meshtastic nod
 
 ---
 
+# Compiled Version
+
+A compiled executable for macOS can be found in releases.
+
+If you download the precompiled macOS binary, make it executable:
+
+`chmod +x mail_gateway_v1.0_macos`
+
+Then run:
+
+`./mail_gateway_v1.0_macos`
+
+This allows running the gateway without installing Python.
+
+Python is still required if you want to modify or run the source code.
+
+---
+
 # Installation
 
 ## 1. Clone the repository
@@ -171,17 +189,3 @@ If pairing for the first time:
 Only one device can control the node at a time, so the script will fail to connect if another device is still connected.
 
 To check if computer sees your node you can use Meshtastic CLI command `meshtastic --ble-scan`, it will output name and bluetooth address of your node. In the settings you should put you node name, script will automatically match it with the address.
-
----
-
-# Compiled Version
-
-A compiled executable may be included in:
-
-```
-dist/mail_gateway
-```
-
-This allows running the gateway without installing Python.
-
-Python is still required if you want to modify or run the source code.
