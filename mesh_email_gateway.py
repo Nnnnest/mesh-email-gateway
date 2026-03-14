@@ -294,10 +294,9 @@ def parse_mesh_email(text):
     return parts[1].strip(),parts[2].strip(),parts[3].strip()
 
 
-def on_receive(packet):
+def on_receive(packet, interface=None):
 
     if "decoded" not in packet:
-        print("Message not decoded")
         return
 
     sender = str(packet.get("from"))
