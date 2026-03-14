@@ -173,6 +173,30 @@ def connect_mesh(mode):
         print("Connecting BLE")
         return BLEInterface(address=addr)
 
+def reconnect_mesh(mode):
+
+    global iface
+
+    print("Reconnecting mesh interface...")
+
+    try:
+        if iface:
+            iface.close()
+    except Exception as e:
+        print("Close error:", e)
+        print("Trying to reconnect")
+
+    time.sleep(2)
+
+    iface = connect_mesh(mode)
+
+    if iface:
+        pub.subscribe(on_receive, "meshtastic.receive")
+        print("Mesh reconnected")
+        return True
+    else:
+        print("Reconnect failed")
+        return False
 
 # -------------------------
 # Email functions
@@ -296,43 +320,43 @@ def parse_mesh_email(text):
 
 def on_receive(packet, interface=None):
 
-    if "decoded" not in packet:
-        return
-
-    sender = str(packet.get("from"))
-
-    if sender != str(int(settings["ALLOWED_NODE"][1:],16)):
-        return
-
-    packet_id = packet.get("id")
-
-    if packet_id in recent_packets:
-        print("Duplicate packet ignored")
-        return
-    
-    recent_packets.add(packet_id)
-
-    if len(recent_packets)>30:
-        recent_packets.clear()
-
-
-    decoded = packet["decoded"]
-
-    if "text" not in decoded:
-        return
-
-    text = decoded["text"]
-
-    parsed = parse_mesh_email(text)
-
-    if not parsed:
-        return
-
-    to_addr,subject,body = parsed
-
-    print("Email request received")
-
     try:
+
+        if "decoded" not in packet:
+            return
+
+        sender = str(packet.get("from"))
+
+        if sender != str(int(settings["ALLOWED_NODE"][1:],16)):
+            return
+
+        packet_id = packet.get("id")
+
+        if packet_id in recent_packets:
+            print("Duplicate packet ignored")
+            return
+        
+        recent_packets.add(packet_id)
+
+        if len(recent_packets)>30:
+            recent_packets.clear()
+
+
+        decoded = packet["decoded"]
+
+        if "text" not in decoded:
+            return
+
+        text = decoded["text"]
+
+        parsed = parse_mesh_email(text)
+
+        if not parsed:
+            return
+
+        to_addr,subject,body = parsed
+
+        print("Email request received")
 
         send_email(to_addr,subject,body)
 
@@ -348,11 +372,16 @@ def on_receive(packet, interface=None):
         print("Email send failed:",e)
 
         fail = f"EMAIL FAILED"
+        
+        try:
 
-        iface.sendText(
-                fail,
-                destinationID=settings["DEST_NODE"]
-            )
+            iface.sendText(
+                    fail,
+                    destinationId=settings["DEST_NODE"]
+                )
+        except:
+
+            print("Failed to send fail message to mesh")
 
 
 # -------------------------
@@ -365,27 +394,21 @@ def gateway_loop(mode):
 
     while True:
 
-        try:
+        if not iface:
+            reconnect_mesh(mode)
+            time.sleep(3)
+            continue
 
+        try:
             check_mail()
 
         except Exception as e:
 
-            print("Gateway error:",e)
-            print("Reconnecting mesh...")
+            print("Gateway error:", e)
 
-            try:
-                iface.close()
-            except:
-                pass
-            
-            iface = connect_mesh(mode)
-
-            if not iface:
-                print("Reconnect failed")
+            reconnect_mesh(mode)
 
         time.sleep(30)
-
 
 # -------------------------
 # Startup / Main
