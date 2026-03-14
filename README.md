@@ -1,6 +1,13 @@
 # Mesh Email Gateway
 
-A Python gateway that forwards emails between a traditional email inbox and a **Meshtastic LoRa mesh network**.
+Email normally requires internet connectivity. In remote or disaster environments,
+however, internet and cellular networks may be unavailable while long-range
+radio networks remain operational.
+
+This project implements a gateway that bridges standard email infrastructure
+(IMAP/SMTP) with a Meshtastic LoRa mesh network, allowing email messages to be
+transmitted across the mesh and delivered once a gateway with internet access
+is available.
 
 The gateway can:
 
@@ -8,6 +15,16 @@ The gateway can:
 - Receive mesh messages and send them as emails via SMTP
 
 It supports both **USB** and **Bluetooth (BLE)** connections to a Meshtastic node.
+
+---
+
+# Architecture
+
+- The gateway periodically checks an email inbox via IMAP.
+- New messages are parsed and converted to Meshtastic text messages.
+- Messages are fragmented to fit LoRa payload limits.
+- The Meshtastic node broadcasts the message into the mesh network.
+- Replies from mesh users are received and forwarded via SMTP as normal email.
 
 ---
 
