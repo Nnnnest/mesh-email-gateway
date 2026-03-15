@@ -10,6 +10,7 @@ venv/
 
 # Environment variables
 .env
+gateway.log
 
 # PyInstaller build artifacts
 build/

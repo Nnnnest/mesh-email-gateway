@@ -11,6 +11,9 @@ import meshtastic.serial_interface
 from meshtastic.ble_interface import BLEInterface
 from email.mime.text import MIMEText
 from pubsub import pub
+import serial.tools.list_ports
+import logging
+import traceback
 
 
 # -------------------------
@@ -125,6 +128,26 @@ def split_message(text,size):
 # Mesh connection
 # -------------------------
 
+def find_usb_ports():
+
+    ports = serial.tools.list_ports.comports()
+
+    candidates = []
+
+    for p in ports:
+
+        name = p.device.lower()
+
+        # ignore bluetooth pseudo-port
+        if "bluetooth" in name or "blth" in name:
+            continue
+
+        # prefer cu devices on macOS
+        if name.startswith("/dev/cu."):
+            candidates.append(p.device)
+
+    return candidates
+
 def find_ble_address():
 
     print("Scanning for BLE nodes...")
@@ -137,7 +160,7 @@ def find_ble_address():
             timeout=15
         )
     except Exception as e:
-        print("BLE scan failed:", e)
+        logging.error("BLE scan failed:")
         return None
 
     for line in result.stdout.splitlines():
@@ -159,11 +182,67 @@ def find_ble_address():
 
 def connect_mesh(mode):
 
-    if mode=="usb":
-        print("Connecting USB")
-        return meshtastic.serial_interface.SerialInterface()
+    if mode == "usb":
 
-    if mode=="ble":
+        # Try auto-detection
+        print("Trying automatic Meshtastic detection...")
+
+        try:
+
+            iface = meshtastic.serial_interface.SerialInterface()
+
+            iface.getMyNodeInfo()
+            iface.waitForConfig()
+
+            print("Connected via automatic detection")
+
+            return iface
+
+        except Exception as e:
+
+            print("Auto-detection failed:")
+            logging.error("Auto-detection failed:")
+
+
+        # Manual scan for /dev/cu ports
+        print("Scanning USB ports...")
+
+        ports = find_usb_ports()
+
+        if not ports:
+            print("No USB serial devices found")
+            logging.info("No USB serial devices found")
+            return None
+
+
+        for port in ports:
+
+            print("Trying port:", port)
+
+            try:
+
+                iface = meshtastic.serial_interface.SerialInterface(port)
+
+                iface.getMyNodeInfo()
+                iface.waitForConfig()
+
+                print("Connected to Meshtastic radio on", port)
+
+                return iface
+
+            except Exception as e:
+
+                print(f"Failed on {port} : {e}")
+                logging.exception("Failed on %s: %s", port, e)
+
+
+        print("No working Meshtastic device found")
+        logging.info("No working Meshtastic device found")
+
+        return None
+
+
+    if mode == "ble":
 
         addr = find_ble_address()
 
@@ -171,19 +250,24 @@ def connect_mesh(mode):
             return None
 
         print("Connecting BLE")
+
         return BLEInterface(address=addr)
+
 
 def reconnect_mesh(mode):
 
     global iface
 
     print("Reconnecting mesh interface...")
+    logging.info("Reconnecting mesh interface...")
 
     try:
         if iface:
             iface.close()
     except Exception as e:
-        print("Close error:", e)
+        
+        print("Close error: ", e)
+        logging.exception("Close error: %s", e)
         print("Trying to reconnect")
 
     time.sleep(2)
@@ -191,11 +275,14 @@ def reconnect_mesh(mode):
     iface = connect_mesh(mode)
 
     if iface:
+
         pub.subscribe(on_receive, "meshtastic.receive")
         print("Mesh reconnected")
         return True
     else:
-        print("Reconnect failed")
+
+        print("reconnect failed")
+        logging.error("Reconnect failed")
         return False
 
 # -------------------------
@@ -245,7 +332,7 @@ def send_email(to_addr,subject,body):
 def check_mail(max_packet=170):
 
     if not iface:
-        print("Mesh not connected")
+        logging.error("Mesh not connected")
         return
 
     mail = connect_mail()
@@ -253,7 +340,7 @@ def check_mail(max_packet=170):
     status,data = mail.search(None,"UNSEEN")
 
     if status != "OK":
-        print("Search failed")
+        logging.error("Search failed")
         mail.logout()
         return
 
@@ -369,7 +456,7 @@ def on_receive(packet, interface=None):
 
     except Exception as e:
 
-        print("Email send failed:",e)
+        logging.exception("Email send failed: %s",e)
 
         fail = f"EMAIL FAILED"
         
@@ -380,8 +467,9 @@ def on_receive(packet, interface=None):
                     destinationId=settings["DEST_NODE"]
                 )
         except:
-
+    
             print("Failed to send fail message to mesh")
+            logging.error("Failed to send fail message to mesh")
 
 
 # -------------------------
@@ -404,7 +492,7 @@ def gateway_loop(mode):
 
         except Exception as e:
 
-            print("Gateway error:", e)
+            logging.exception("Gateway error: %s", e)
 
             reconnect_mesh(mode)
 
@@ -426,8 +514,17 @@ def main():
     if input("> ").strip().lower() == "y":
         edit_settings()
         settings = load_settings()
-
+    
+    # Logger
+    logging.basicConfig(
+        filename="gateway.log",
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s"
+    )
+    
+    # Starting Gateway
     print("Mesh Email Gateway Starting...\n")
+    logging.info("Mesh Email Gateway Starting...\n")
 
     # Connection selection
     print("\nSelect connection type:")
@@ -440,7 +537,7 @@ def main():
     iface = connect_mesh(mode)
 
     if not iface:
-        print("Mesh connection failed")
+        logging.error("Mesh connection failed")
         return
 
     pub.subscribe(on_receive, "meshtastic.receive")
@@ -450,4 +547,13 @@ def main():
     gateway_loop(mode)
 
 if __name__ == "__main__":
-    main()
+    try:
+
+        main()
+
+        input("Finished execution. Press enter to exit.")
+
+    except Exception:
+
+        logging.error(traceback.format_exc())
+        input("Fatal error occured. Press Enter to exit.")
